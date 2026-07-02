@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "databubble"
+version = "0.1.0"
+description = "Statistical Intelligence as a Service — rigorous analysis skills via API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "DataBubble AI"}
+]
+keywords = ["statistics", "data analysis", "machine learning", "api"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+# Only httpx is optional — urllib fallback works for post_json
+# pandas is required in practice but not enforced (gives clear error if missing)
+dependencies = []
+
+[project.optional-dependencies]
+recommended = ["httpx>=0.24", "pandas>=1.5"]
+dev = ["httpx>=0.24", "pandas>=1.5", "pytest>=7", "pytest-mock"]
+
+[project.urls]
+Homepage = "https://databubble.ai"
+Documentation = "https://api.databubble.ai"
+Repository = "https://github.com/databubble-ai/databubble-python"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["databubble*"]
