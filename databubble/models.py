@@ -182,3 +182,61 @@ class ReconciliationResult:
             f"ready={self.ready_to_advance}, "
             f"open={len(self.open_items)})"
         )
+
+
+@dataclass
+class JourneyResult:
+    """
+    Return type for all db.journeys.* calls.
+
+    Attributes:
+        journey_type        Which journey was run.
+        halted              True when the platform stopped early.
+        halt_reason         Why it halted (None when halted=False).
+        primary_estimate    Main numerical result (elasticity β, driver effect, etc).
+        plain_english_summary  Full non-technical narrative.
+        warnings            Assumption violations, data issues, caveats.
+        assumptions_met     Whether statistical assumptions were satisfied.
+        adj_r_squared       Adjusted R² where applicable (None otherwise).
+        revenue_implication Plain-English revenue direction (elasticity only).
+        recommended         Recommended predictors (driver only).
+        caution             Predictors with concerns (driver only).
+        excluded            Predictors without signal (driver only).
+        tier                API tier used.
+        key_prefix          Key prefix for audit trail.
+        raw                 Full API response dict.
+    """
+    journey_type: str
+    halted: bool
+    halt_reason: Optional[str]
+    primary_estimate: Optional[float]
+    plain_english_summary: str
+    warnings: list[str]
+    assumptions_met: Optional[bool]
+    adj_r_squared: Optional[float] = None
+    revenue_implication: Optional[str] = None
+    recommended: list[str] = field(default_factory=list)
+    caution: list[str] = field(default_factory=list)
+    excluded: list[str] = field(default_factory=list)
+    tier: Optional[str] = None
+    key_prefix: Optional[str] = None
+    raw: dict = field(default_factory=dict)
+
+    def is_reliable(self) -> bool:
+        """
+        True when the journey completed without halting and assumptions were met.
+        Use this as a quick gate before trusting primary_estimate.
+        """
+        return not self.halted and self.assumptions_met is not False
+
+    def has_warnings(self) -> bool:
+        return len(self.warnings) > 0
+
+    def __repr__(self) -> str:
+        if self.halted:
+            return f"JourneyResult({self.journey_type}, HALTED: {self.halt_reason})"
+        return (
+            f"JourneyResult({self.journey_type}, "
+            f"estimate={self.primary_estimate}, "
+            f"reliable={self.is_reliable()})"
+        )

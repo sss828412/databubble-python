@@ -10,18 +10,19 @@ Quick start:
 """
 
 from databubble.client import DataBubble
-from databubble.models import SkillResult, MemoryResult, ReconciliationResult
+from databubble.models import SkillResult, MemoryResult, ReconciliationResult, JourneyResult
 from databubble.exceptions import (
     DataBubbleError, AuthError, ForbiddenError,
     RateLimitError, SkillError, ServerError, SDKUsageError,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "DataBubble",
     "SkillResult",
     "MemoryResult",
     "ReconciliationResult",
+    "JourneyResult",
     "DataBubbleError",
     "AuthError",
     "ForbiddenError",

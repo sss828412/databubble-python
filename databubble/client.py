@@ -19,6 +19,7 @@ from databubble.exceptions import (
 )
 from databubble.skills import SkillsClient
 from databubble.memory import MemoryClient
+from databubble.journeys import JourneysClient
 
 
 DEFAULT_BASE_URL = "https://api.databubble.ai"
@@ -172,6 +173,7 @@ class DataBubble:
         self._http = _HTTPClient(resolved_key, base_url, timeout)
         self.skills = SkillsClient(self._http)
         self.memory = MemoryClient(self._http)
+        self.journeys = JourneysClient(self._http)
 
     def close(self):
         self._http.close()
