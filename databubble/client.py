@@ -52,18 +52,26 @@ class _HTTPClient:
             self._backend = "urllib"
 
     def _raise_for_status(self, status_code: int, body: dict):
+        # Route-level errors wrap in {"detail": {"error": ...}};
+        # middleware errors use flat {"error": ...}. Extract from both (M-9).
+        detail = body.get("detail") or {}
+        msg = (
+            (detail.get("error") if isinstance(detail, dict) else None)
+            or body.get("error")
+            or f"HTTP {status_code}"
+        )
         if status_code == 401:
-            raise AuthError(body.get("error", "Invalid API key"), status_code, body)
+            raise AuthError(msg, status_code, body)
         if status_code == 403:
-            raise ForbiddenError(body.get("error", "Skill not available on this tier"), status_code, body)
+            raise ForbiddenError(msg, status_code, body)
         if status_code == 429:
-            raise RateLimitError(body.get("error", "Monthly limit reached"), status_code, body)
-        if status_code == 400:
-            raise SkillError(body.get("error", "Skill returned an error"), status_code, body)
+            raise RateLimitError(msg, status_code, body)
+        if status_code in (400, 422):  # 422 was falling through to generic DataBubbleError (D-4)
+            raise SkillError(msg, status_code, body)
         if status_code >= 500:
-            raise ServerError(f"Server error ({status_code})", status_code, body)
+            raise ServerError(f"Server error ({status_code}): {msg}", status_code, body)
         if status_code >= 400:
-            raise DataBubbleError(body.get("error", f"HTTP {status_code}"), status_code, body)
+            raise DataBubbleError(msg, status_code, body)
 
     def post_json(self, path: str, payload: dict) -> dict:
         """POST with JSON body. Returns parsed response dict."""
@@ -91,6 +99,8 @@ class _HTTPClient:
             except urllib.error.HTTPError as e:
                 body = json.loads(e.read())
                 self._raise_for_status(e.code, body)
+                # _raise_for_status always raises for 4xx/5xx; this is a safety net
+                raise ServerError(f"Unexpected response ({e.code})", e.code, body)
 
     def post_multipart(self, path: str, fields: dict, files: dict) -> dict:
         """POST with multipart form data. Returns parsed response dict."""

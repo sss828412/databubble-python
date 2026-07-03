@@ -25,12 +25,33 @@ from databubble.models import SkillResult
 from databubble.exceptions import SDKUsageError
 
 
+def _sanitise_value(v, col_name: str):
+    """
+    Convert a single value for JSON transport.
+    NaN → None (documented: treated as missing by the API).
+    Inf/-Inf → SDKUsageError (JSON cannot represent infinity; caller must handle it).
+    """
+    import math
+    if v != v:  # NaN — works for float NaN; pd.NA uses separate branch below
+        return None
+    if isinstance(v, float) and math.isinf(v):
+        raise SDKUsageError(
+            f"Column '{col_name}' contains infinite values (inf or -inf). "
+            "Remove or replace them before calling skills. "
+            "Note: NaN values are accepted and treated as missing."
+        )
+    return v
+
+
 def _series_to_payload(series, col_name: str) -> dict:
-    """Serialise a pd.Series to the JSON body format."""
+    """
+    Serialise a pd.Series to the JSON body format.
+    NaN → null (documented API contract: treated as missing value).
+    Inf raises SDKUsageError — JSON has no Infinity representation.
+    """
     return {
         "column": col_name,
-        "data": [None if v != v else v for v in series.tolist()],
-        # NaN → None: JSON has no NaN, API accepts null
+        "data": [_sanitise_value(v, col_name) for v in series.tolist()],
     }
 
 
@@ -38,7 +59,7 @@ def _df_to_payload(df, columns: list[str]) -> dict:
     """Serialise selected DataFrame columns to JSON body format."""
     return {
         "columns": columns,
-        "data": {col: [None if v != v else v for v in df[col].tolist()] for col in columns},
+        "data": {col: [_sanitise_value(v, col) for v in df[col].tolist()] for col in columns},
     }
 
 
@@ -57,6 +78,8 @@ def _parse_skill_result(response: dict) -> SkillResult:
         n_rows=response.get("n_rows"),
         tier=meta.get("tier"),
         key_prefix=meta.get("key_prefix"),
+        halted=result.get("halted", False),
+        halt_reason=result.get("halt_reason"),
         raw=response,
     )
 

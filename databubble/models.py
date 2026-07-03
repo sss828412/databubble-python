@@ -39,6 +39,8 @@ class SkillResult:
     n_rows: Optional[int] = None
     tier: Optional[str] = None
     key_prefix: Optional[str] = None
+    halted: bool = False
+    halt_reason: Optional[str] = None
     raw: dict = field(default_factory=dict)
 
     def has_warnings(self) -> bool:
