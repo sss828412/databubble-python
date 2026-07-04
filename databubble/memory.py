@@ -53,12 +53,17 @@ class MemoryClient:
         if not label or not label.strip():
             raise SDKUsageError("label is required and cannot be empty.")
 
+        # Send dtype_info alongside the CSV so the server can store original dtype names
+        # rather than CSV-re-parsed types (M-6: CSV round-trip launders dtypes).
+        dtype_info = json.dumps({c: str(df[c].dtype) for c in df.columns})
+
         response = self._http.post_multipart(
             "/v1/memory/export",
             fields={
                 "label": label,
                 "eda_result": json.dumps(eda_result) if eda_result else None,
                 "journey_results": json.dumps(journey_results) if journey_results else None,
+                "dtype_info": dtype_info,
             },
             files={"file": ("data.csv", df.to_csv(index=False), "text/csv")},
         )
@@ -130,7 +135,12 @@ class MemoryClient:
 
         import tempfile, os
         tmp_files = []
+        open_handles = []
         try:
+            # M-5: use "memory_files" as the field name for every memory file so FastAPI
+            # can bind them as list[UploadFile]. The old code used "memory_file_0",
+            # "memory_file_1", etc., which do not bind to the list[UploadFile] parameter.
+            # M-6: send dtype_info alongside the CSV so the server preserves original dtypes.
             file_tuples = []
             for i, mem in enumerate(memories):
                 tmp = tempfile.NamedTemporaryFile(
@@ -139,10 +149,9 @@ class MemoryClient:
                 json.dump(mem, tmp)
                 tmp.close()
                 tmp_files.append(tmp.name)
-                file_tuples.append(
-                    ("memory_files", (f"memory_{i}.json",
-                     open(tmp.name, "rb"), "application/json"))
-                )
+                fh = open(tmp.name, "rb")
+                open_handles.append(fh)
+                file_tuples.append((f"memory_{i}.json", fh, "application/json"))
 
             session_note = {
                 "what_was_done": note,
@@ -151,15 +160,28 @@ class MemoryClient:
                 "other_notes": None,
             }
 
+            dtype_info = json.dumps({c: str(df[c].dtype) for c in df.columns})
+
+            # Build files dict: all memory files share the "memory_files" key (M-5).
+            # httpx accepts a list of tuples for repeated field names.
+            files = [
+                ("memory_files", t)
+                for t in file_tuples
+            ]
+            files.append(("new_csv", ("data.csv", df.to_csv(index=False), "text/csv")))
+
             response = self._http.post_multipart(
                 "/v1/memory/load",
-                fields={"session_note": json.dumps(session_note)},
-                files={
-                    **{f"memory_file_{i}": t[1] for i, t in enumerate(file_tuples)},
-                    "new_csv": ("data.csv", df.to_csv(index=False), "text/csv"),
-                },
+                fields={"session_note": json.dumps(session_note), "dtype_info": dtype_info},
+                files=files,
             )
         finally:
+            # Close file handles before unlinking — on Windows, open handles block deletion (M-5).
+            for fh in open_handles:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
             for path in tmp_files:
                 try:
                     os.unlink(path)

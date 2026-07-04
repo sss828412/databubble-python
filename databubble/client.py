@@ -102,19 +102,25 @@ class _HTTPClient:
                 # _raise_for_status always raises for 4xx/5xx; this is a safety net
                 raise ServerError(f"Unexpected response ({e.code})", e.code, body)
 
-    def post_multipart(self, path: str, fields: dict, files: dict) -> dict:
-        """POST with multipart form data. Returns parsed response dict."""
+    def post_multipart(self, path: str, fields: dict, files) -> dict:
+        """
+        POST with multipart form data. Returns parsed response dict.
+
+        files may be:
+          - dict: {field_name: (filename, data, content_type)} — single file per field
+          - list of (field_name, (filename, data, content_type)) — supports repeated field names
+            for list[UploadFile] parameters (M-5: memory_files needs repeated "memory_files" key)
+        """
         url = f"{self._base_url}{path}"
 
         if self._backend == "httpx":
             form_data = {k: v for k, v in fields.items() if v is not None}
-            file_data = {}
-            for k, v in files.items():
-                if isinstance(v, tuple):
-                    file_data[k] = v
-                else:
-                    file_data[k] = v
-            response = self._session.post(path, data=form_data, files=file_data)
+            # httpx accepts files as a list of (name, content) tuples for repeated keys
+            if isinstance(files, dict):
+                file_list = [(k, v) for k, v in files.items()]
+            else:
+                file_list = list(files)
+            response = self._session.post(path, data=form_data, files=file_list)
             body = response.json()
             self._raise_for_status(response.status_code, body)
             return body

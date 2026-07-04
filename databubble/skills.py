@@ -28,12 +28,21 @@ from databubble.exceptions import SDKUsageError
 def _sanitise_value(v, col_name: str):
     """
     Convert a single value for JSON transport.
-    NaN → None (documented: treated as missing by the API).
+    NaN / pd.NA / None → None (documented: treated as missing by the API).
     Inf/-Inf → SDKUsageError (JSON cannot represent infinity; caller must handle it).
+
+    M-4: pd.NA (nullable Int64/boolean/string dtypes) breaks `v != v` because
+    `pd.NA != pd.NA` returns pd.NA, which raises TypeError in a boolean context.
+    Use pd.isna() which handles float NaN, pd.NA, numpy.nan, and None uniformly.
     """
     import math
-    if v != v:  # NaN — works for float NaN; pd.NA uses separate branch below
-        return None
+    try:
+        import pandas as pd
+        if pd.isna(v):
+            return None
+    except (ImportError, TypeError, ValueError):
+        # pd.isna raises TypeError for unhashable types (dicts, lists) — not missing
+        pass
     if isinstance(v, float) and math.isinf(v):
         raise SDKUsageError(
             f"Column '{col_name}' contains infinite values (inf or -inf). "
