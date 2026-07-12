@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "databubble"
@@ -35,7 +35,8 @@ dev = ["httpx>=0.24", "pandas>=1.5", "pytest>=7", "pytest-mock"]
 [project.urls]
 Homepage = "https://databubble.ai"
 Documentation = "https://api.databubble.ai"
-Repository = "https://github.com/databubble-ai/databubble-python"
+Repository = "https://github.com/sss828412/databubble-python"
+Issues = "https://github.com/sss828412/databubble-python/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
