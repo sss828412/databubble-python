@@ -2,6 +2,15 @@
 
 Statistical Intelligence as a Service. Current version: **0.2.0**.
 
+A thin, typed client over the DataBubble HTTP API (`/v1/*`) — handles
+authentication (`X-API-Key`), request/response shaping, and session memory.
+It does **not** expose the knowledge-base / `/ask` surface (no `knowledge` or
+`ask` module) — that's a REST-only surface for now.
+
+> **Status:** pre-PyPI. `pyproject.toml` already declares `license = {text =
+> "MIT"}`, but **no `LICENSE` file exists in the repo yet** — the license text
+> itself needs to be added (owner's decision) before any public release.
+
 **Pre-release:** the package isn't published to PyPI yet — until then, install
 from source:
 
@@ -87,3 +96,16 @@ result = db.journeys.time_series(df, date_col="week", value_col="sales", objecti
 | Enterprise | Custom | Unlimited | Unlimited | Everything |
 
 Get a key at [databubble.ai](https://databubble.ai).
+
+## Related repositories
+
+- **databubble** — the main platform (API + skills + journeys + front-end).
+- **databubble-knowledge** — the knowledge / Obsidian vault.
+
+## Before publishing to PyPI (release checklist)
+
+- **[blocker] Add a `LICENSE` file** — see `LICENSE_DECISION.md` for the options and a recommendation; owner's decision.
+- Add `CONTRIBUTING.md`.
+- Confirm the version, changelog entry, and semantic-versioning policy.
+- Ensure no credentials or internal URLs are baked into the package.
+- Verify the packaged client targets the public, documented `/v1/*` API surface only.
