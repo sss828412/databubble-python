@@ -49,6 +49,11 @@ See `RELEASING.md` for the full cut-a-release process (PyPI Trusted
 Publishing via `.github/workflows/publish.yml`, gated on a published GitHub
 Release — nothing fires on a plain push).
 
+## Changelog
+
+Add a `CHANGELOG.md` entry for every PR, in the same PR — what changed and
+why, not a commit list.
+
 ## Before this is publishable
 
 - No `LICENSE` file exists yet, even though `pyproject.toml` already
