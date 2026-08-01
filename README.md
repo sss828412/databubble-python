@@ -7,9 +7,8 @@ authentication (`X-API-Key`), request/response shaping, and session memory.
 It does **not** expose the knowledge-base / `/ask` surface (no `knowledge` or
 `ask` module) — that's a REST-only surface for now.
 
-> **Status:** pre-PyPI. `pyproject.toml` already declares `license = {text =
-> "MIT"}`, but **no `LICENSE` file exists in the repo yet** — the license text
-> itself needs to be added (owner's decision) before any public release.
+> **Status:** pre-PyPI. MIT licensed — `LICENSE` file added 2026-08-01, matching
+> the `license = {text = "MIT"}` declared in `pyproject.toml`.
 
 **Pre-release:** the package isn't published to PyPI yet — until then, install
 from source:
@@ -104,7 +103,7 @@ Get a key at [databubble.ai](https://databubble.ai).
 
 ## Before publishing to PyPI (release checklist)
 
-- **[blocker] Add a `LICENSE` file** — see `LICENSE_DECISION.md` for the options and a recommendation; owner's decision.
+- ~~Add a `LICENSE` file~~ — done 2026-08-01, MIT (see `LICENSE_DECISION.md`).
 - Add `CONTRIBUTING.md`.
 - Confirm the version, changelog entry, and semantic-versioning policy.
 - Ensure no credentials or internal URLs are baked into the package.
