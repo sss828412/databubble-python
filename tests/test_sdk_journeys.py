@@ -281,3 +281,219 @@ def test_time_series_invalid_objective(ts_df):
         )
     assert "forecast" in str(exc_info.value)
     assert "decompose" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Case 9+: the 6 journeys added alongside item 5 (routes+SDK for
+# classification/ab_test/clv/predictive_model/latent_factors/causal_inference)
+# ---------------------------------------------------------------------------
+
+def _make_client(http):
+    client = DataBubble.__new__(DataBubble)
+    client._http = http
+    from databubble.journeys import JourneysClient
+    from databubble.skills import SkillsClient
+    from databubble.memory import MemoryClient
+    client.skills = SkillsClient(http)
+    client.memory = MemoryClient(http)
+    client.journeys = JourneysClient(http)
+    return client
+
+
+@pytest.fixture
+def classification_df():
+    n = 40
+    return pd.DataFrame({
+        "churned": RNG.choice([0, 1], n),
+        "tenure":  RNG.uniform(1, 60, n),
+        "usage":   RNG.uniform(0, 100, n),
+    })
+
+
+@pytest.fixture
+def ab_test_df():
+    n = 40
+    return pd.DataFrame({
+        "variant":   RNG.choice(["A", "B"], n),
+        "converted": RNG.choice([0, 1], n),
+    })
+
+
+@pytest.fixture
+def clv_df():
+    n = 40
+    return pd.DataFrame({
+        "tenure_months": RNG.uniform(1, 60, n),
+        "churned":       RNG.choice([0, 1], n),
+        "plan_tier":     RNG.uniform(1, 3, n),
+    })
+
+
+@pytest.fixture
+def causal_df():
+    n = 40
+    return pd.DataFrame({
+        "treated": RNG.choice([0, 1], n),
+        "revenue": RNG.normal(100, 20, n),
+        "store_id": RNG.integers(1, 10, n),
+        "week": RNG.integers(1, 20, n),
+    })
+
+
+@pytest.fixture
+def latent_df():
+    n = 40
+    return pd.DataFrame({f"q{i}": RNG.normal(size=n) for i in range(1, 7)})
+
+
+def test_classification_payload(classification_df):
+    http = MagicMock()
+    http.post_json.return_value = {
+        "status": "ok", "journey_type": "classification",
+        "result": {"halted": False, "halt_reason": None, "plain_english_summary": "",
+                   "warnings": [], "assumptions_met": None},
+        "_meta": {"tier": "business", "key_prefix": "dbk_test12"},
+    }
+    client = _make_client(http)
+    client.journeys.classification(
+        classification_df, outcome_col="churned", candidate_cols=["tenure", "usage"],
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/classification"
+    assert payload["column_map"] == {
+        "outcome_col": "churned", "candidate_cols": ["tenure", "usage"], "confounder_cols": [],
+    }
+
+
+def test_ab_test_payload(ab_test_df):
+    http = MagicMock()
+    http.post_json.return_value = {
+        "status": "ok", "journey_type": "ab_test",
+        "result": {"halted": False, "halt_reason": None, "plain_english_summary": "",
+                   "warnings": [], "assumptions_met": None},
+        "_meta": {"tier": "business", "key_prefix": "dbk_test12"},
+    }
+    client = _make_client(http)
+    client.journeys.ab_test(ab_test_df, group_col="variant", metric_col="converted")
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/ab_test"
+    assert payload["column_map"] == {"group_col": "variant", "metric_col": "converted"}
+    assert payload["options"]["alternative"] == "two-sided"
+
+
+def test_ab_test_invalid_alternative_raises(ab_test_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.ab_test(
+            ab_test_df, group_col="variant", metric_col="converted", alternative="both",
+        )
+
+
+def test_clv_payload(clv_df):
+    http = MagicMock()
+    http.post_json.return_value = {
+        "status": "ok", "journey_type": "clv",
+        "result": {"halted": False, "halt_reason": None, "plain_english_summary": "",
+                   "warnings": [], "assumptions_met": None},
+        "_meta": {"tier": "business", "key_prefix": "dbk_test12"},
+    }
+    client = _make_client(http)
+    client.journeys.clv(
+        clv_df, duration_col="tenure_months", event_col="churned",
+        covariate_cols=["plan_tier"], margin_per_period=42.0,
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/clv"
+    assert payload["column_map"] == {
+        "duration_col": "tenure_months", "event_col": "churned", "covariate_cols": ["plan_tier"],
+    }
+    assert payload["options"]["margin_per_period"] == 42.0
+
+
+def test_predictive_model_payload_uses_outcome_col_key(classification_df):
+    # server key is outcome_col/candidate_cols even though the SDK's own
+    # kwarg is target_col — this asserts the translation, not just pass-through.
+    http = MagicMock()
+    http.post_json.return_value = {
+        "status": "ok", "journey_type": "predictive_model",
+        "result": {"halted": False, "halt_reason": None, "plain_english_summary": "",
+                   "warnings": [], "assumptions_met": None},
+        "_meta": {"tier": "business", "key_prefix": "dbk_test12"},
+    }
+    client = _make_client(http)
+    client.journeys.predictive_model(
+        classification_df, target_col="churned", feature_cols=["tenure", "usage"],
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/predictive_model"
+    assert payload["column_map"] == {"outcome_col": "churned", "candidate_cols": ["tenure", "usage"]}
+
+
+def test_predictive_model_invalid_error_cost_preference_raises(classification_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.predictive_model(
+            classification_df, target_col="churned", feature_cols=["tenure"],
+            error_cost_preference="nonsense",
+        )
+
+
+def test_latent_factors_payload(latent_df):
+    http = MagicMock()
+    http.post_json.return_value = {
+        "status": "ok", "journey_type": "latent_factors",
+        "result": {"halted": False, "halt_reason": None, "plain_english_summary": "",
+                   "warnings": [], "assumptions_met": None,
+                   "handoffs": {"factorable": True, "n_factors": 2}},
+        "_meta": {"tier": "business", "key_prefix": "dbk_test12"},
+    }
+    client = _make_client(http)
+    result = client.journeys.latent_factors(
+        latent_df, indicator_cols=[f"q{i}" for i in range(1, 7)], intent="efa",
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/latent_factors"
+    assert payload["column_map"] == {"indicator_cols": [f"q{i}" for i in range(1, 7)]}
+    assert payload["options"]["intent"] == "efa"
+    assert result.raw["result"]["handoffs"]["n_factors"] == 2
+
+
+def test_latent_factors_invalid_intent_raises(latent_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.latent_factors(
+            latent_df, indicator_cols=[f"q{i}" for i in range(1, 7)], intent="ica",
+        )
+
+
+def test_causal_inference_payload(causal_df):
+    http = MagicMock()
+    http.post_json.return_value = {
+        "status": "ok", "journey_type": "causal_inference",
+        "result": {"halted": False, "halt_reason": None, "plain_english_summary": "",
+                   "warnings": [], "assumptions_met": None,
+                   "handoffs": {"design": "did", "identified": True, "did_estimate": 2.1}},
+        "_meta": {"tier": "business", "key_prefix": "dbk_test12"},
+    }
+    client = _make_client(http)
+    result = client.journeys.causal_inference(
+        causal_df, treatment_col="treated", outcome_col="revenue",
+        design="did", unit_col="store_id", time_col="week", treat_period=12,
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/causal_inference"
+    assert payload["column_map"] == {
+        "treatment_col": "treated", "outcome_col": "revenue",
+        "covariate_cols": [], "unit_col": "store_id", "time_col": "week",
+    }
+    assert payload["options"]["design"] == "did"
+    assert payload["options"]["treat_period"] == 12
+    assert result.raw["result"]["handoffs"]["did_estimate"] == 2.1
+
+
+def test_causal_inference_missing_treatment_col_raises(causal_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.causal_inference(
+            causal_df, treatment_col="nonexistent", outcome_col="revenue",
+        )

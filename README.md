@@ -83,6 +83,27 @@ result = db.journeys.segmentation(df, feature_cols=["recency", "frequency", "spe
 
 # Time series — forecast or decompose
 result = db.journeys.time_series(df, date_col="week", value_col="sales", objective="forecast")
+
+# Binary classification — churn, fraud, default, response
+result = db.journeys.classification(df, outcome_col="churned", candidate_cols=["tenure", "usage"])
+
+# A/B test — randomised experiment, two groups
+result = db.journeys.ab_test(df, group_col="variant", metric_col="converted")
+
+# Customer lifetime value / survival analysis
+result = db.journeys.clv(df, duration_col="tenure_months", event_col="churned", margin_per_period=42.0)
+
+# Predictive model — classifier built for prediction accuracy
+result = db.journeys.predictive_model(df, target_col="default", feature_cols=["income", "credit_score"])
+
+# Latent factors — PCA (compression) or EFA (latent constructs)
+result = db.journeys.latent_factors(df, indicator_cols=["q1", "q2", "q3", "q4", "q5"], intent="efa")
+
+# Causal inference — design-based effect from observational data (not a randomised test)
+result = db.journeys.causal_inference(
+    df, treatment_col="treated", outcome_col="revenue",
+    design="did", unit_col="store_id", time_col="week", treat_period=12,
+)
 ```
 
 ## Tiers
