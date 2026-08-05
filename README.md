@@ -1,29 +1,23 @@
 # DataBubble SDK
 
-Statistical Intelligence as a Service. Current version: **0.2.0**.
+Statistical Intelligence as a Service. Current version: **0.3.0**.
 
 A thin, typed client over the DataBubble HTTP API (`/v1/*`) — handles
 authentication (`X-API-Key`), request/response shaping, and session memory.
 It does **not** expose the knowledge-base / `/ask` surface (no `knowledge` or
 `ask` module) — that's a REST-only surface for now.
 
-> **Status:** pre-PyPI. MIT licensed — `LICENSE` file added 2026-08-01, matching
-> the `license = {text = "MIT"}` declared in `pyproject.toml`.
-
-**Pre-release:** the package isn't published to PyPI yet — until then, install
-from source:
-
-```bash
-pip install git+https://github.com/sss828412/databubble-python.git
-# or, for local development:
-pip install -e .
-```
-
-Once released, install will be:
+> **Status:** published on PyPI. MIT licensed — `LICENSE` file added
+> 2026-08-01, matching the `license = {text = "MIT"}` declared in
+> `pyproject.toml`.
 
 ```bash
 pip install databubble httpx pandas
 ```
+
+(Installing straight from GitHub also still works, if you want an
+unreleased commit: `pip install git+https://github.com/sss828412/databubble-python.git`,
+or `pip install -e .` for local development.)
 
 ## Quick start
 

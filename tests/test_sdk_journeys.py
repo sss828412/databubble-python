@@ -1,5 +1,5 @@
 """
-SDK v0.2.0 journey method tests.
+SDK v0.3.0 journey method tests.
 No running server required — HTTP is mocked.
 """
 
