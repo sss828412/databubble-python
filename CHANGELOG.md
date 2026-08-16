@@ -17,6 +17,13 @@ repositories section. Added `CONTRIBUTING.md`, `SECURITY.md`, and
 recommended, not yet finalized). Merged directly to `main` (fast-forward, no
 conflicts).
 
+## 2026-08-01 — MIT LICENSE file added
+
+`pyproject.toml` already declared `license = {text = "MIT"}` but no `LICENSE`
+file existed — the last blocker before a PyPI publish. Owner picked MIT
+(recommended in `LICENSE_DECISION.md`) over Apache-2.0/copyleft alternatives;
+README release checklist updated to match.
+
 ## 2026-08-05 — item 5: 6 new journey wrappers (classification, ab_test, clv,
 predictive_model, latent_factors, causal_inference)
 
