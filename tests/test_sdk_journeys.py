@@ -497,3 +497,245 @@ def test_causal_inference_missing_treatment_col_raises(causal_df):
         client.journeys.causal_inference(
             causal_df, treatment_col="nonexistent", outcome_col="revenue",
         )
+
+
+# ---------------------------------------------------------------------------
+# Case 20+: the 7 journeys added 2026-08-16 to close the gap between the API
+# (17 /v1/journeys/* routes) and the SDK, which had only wrapped 10.
+# ---------------------------------------------------------------------------
+
+def _ok_response(journey_type, handoffs=None):
+    result = {
+        "halted": False, "halt_reason": None, "plain_english_summary": "",
+        "warnings": [], "assumptions_met": None,
+    }
+    if handoffs is not None:
+        result["handoffs"] = handoffs
+    return {
+        "status": "ok", "journey_type": journey_type,
+        "result": result,
+        "_meta": {"tier": "business", "key_prefix": "dbk_test12"},
+    }
+
+
+@pytest.fixture
+def spc_df():
+    n = 60
+    dates = pd.date_range("2026-01-01", periods=n, freq="D")
+    return pd.DataFrame({"day": dates.astype(str), "defect_rate": RNG.normal(2.0, 0.3, n)})
+
+
+@pytest.fixture
+def inventory_df():
+    n = 52
+    dates = pd.date_range("2025-01-01", periods=n, freq="W")
+    return pd.DataFrame({"week": dates.astype(str), "units_sold": RNG.uniform(80, 150, n)})
+
+
+@pytest.fixture
+def churn_risk_df():
+    n = 50
+    return pd.DataFrame({
+        "tenure_months": RNG.uniform(1, 60, n),
+        "churned":       RNG.choice([0, 1], n),
+        "plan_tier":     RNG.uniform(1, 3, n),
+    })
+
+
+@pytest.fixture
+def mmm_df():
+    n = 60
+    dates = pd.date_range("2025-01-01", periods=n, freq="W")
+    return pd.DataFrame({
+        "week":          dates.astype(str),
+        "revenue":       RNG.uniform(1000, 5000, n),
+        "tv_spend":      RNG.uniform(0, 500, n),
+        "search_spend":  RNG.uniform(0, 300, n),
+    })
+
+
+@pytest.fixture
+def pay_equity_df():
+    n = 80
+    return pd.DataFrame({
+        "salary": RNG.uniform(50000, 150000, n),
+        "gender": RNG.choice(["M", "F"], n),
+        "level":  RNG.integers(1, 6, n),
+    })
+
+
+@pytest.fixture
+def cross_price_df():
+    n = 40
+    return pd.DataFrame({
+        "units":   RNG.uniform(50, 200, n),
+        "price_a": RNG.uniform(8, 15, n),
+        "price_b": RNG.uniform(8, 15, n),
+    })
+
+
+@pytest.fixture
+def intervention_df():
+    n = 40
+    dates = pd.date_range("2026-01-01", periods=n, freq="D")
+    return pd.DataFrame({"day": dates.astype(str), "conversions": RNG.uniform(10, 50, n)})
+
+
+def test_spc_monitoring_payload(spc_df):
+    http = MagicMock()
+    http.post_json.return_value = _ok_response("spc_monitoring")
+    client = _make_client(http)
+    client.journeys.spc_monitoring(spc_df, date_col="day", value_col="defect_rate", baseline_n=30)
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/spc_monitoring"
+    assert payload["column_map"] == {"date_col": "day", "value_col": "defect_rate"}
+    assert payload["options"]["baseline_n"] == 30
+    assert payload["options"]["min_baseline"] == 20
+
+
+def test_spc_monitoring_missing_column_raises(spc_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.spc_monitoring(spc_df, date_col="day", value_col="nonexistent")
+
+
+def test_forecast_inventory_payload(inventory_df):
+    http = MagicMock()
+    http.post_json.return_value = _ok_response("forecast_inventory")
+    client = _make_client(http)
+    client.journeys.forecast_inventory(
+        inventory_df, date_col="week", value_col="units_sold", lead_time_periods=3,
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/forecast_inventory"
+    assert payload["column_map"] == {"date_col": "week", "value_col": "units_sold"}
+    assert payload["options"]["lead_time_periods"] == 3
+    assert payload["options"]["service_level"] == 0.95
+
+
+def test_churn_clv_at_risk_payload(churn_risk_df):
+    http = MagicMock()
+    http.post_json.return_value = _ok_response(
+        "churn_clv_at_risk", handoffs={"revenue_at_risk_per_customer": 120.5},
+    )
+    client = _make_client(http)
+    result = client.journeys.churn_clv_at_risk(
+        churn_risk_df, duration_col="tenure_months", event_col="churned",
+        covariate_cols=["plan_tier"], margin_per_period=42.0, cohort_size=5000,
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/churn_clv_at_risk"
+    assert payload["column_map"] == {
+        "duration_col": "tenure_months", "event_col": "churned", "covariate_cols": ["plan_tier"],
+    }
+    assert payload["options"]["margin_per_period"] == 42.0
+    assert payload["options"]["cohort_size"] == 5000
+    assert result.raw["result"]["handoffs"]["revenue_at_risk_per_customer"] == 120.5
+
+
+def test_mmm_payload(mmm_df):
+    http = MagicMock()
+    http.post_json.return_value = _ok_response("mmm")
+    client = _make_client(http)
+    client.journeys.mmm(
+        mmm_df, date_col="week", outcome_col="revenue",
+        channel_cols=["tv_spend", "search_spend"],
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/mmm"
+    assert payload["column_map"]["channel_cols"] == ["tv_spend", "search_spend"]
+    assert payload["column_map"]["group_col"] is None
+    assert payload["options"]["group_mode"] == "pooled"
+
+
+def test_mmm_missing_channel_col_raises(mmm_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.mmm(
+            mmm_df, date_col="week", outcome_col="revenue",
+            channel_cols=["tv_spend", "nonexistent"],
+        )
+
+
+def test_pay_equity_payload(pay_equity_df):
+    http = MagicMock()
+    http.post_json.return_value = _ok_response(
+        "pay_equity", handoffs={"mode": "binary", "adjusted_gap": -0.04},
+    )
+    client = _make_client(http)
+    result = client.journeys.pay_equity(
+        pay_equity_df, compensation_col="salary", protected_col="gender",
+        factor_cols=["level"],
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/pay_equity"
+    assert payload["column_map"] == {
+        "compensation_col": "salary", "protected_col": "gender", "factor_cols": ["level"],
+    }
+    assert payload["options"]["log_compensation"] is True
+    assert result.raw["result"]["handoffs"]["mode"] == "binary"
+
+
+def test_cross_price_payload(cross_price_df):
+    http = MagicMock()
+    http.post_json.return_value = _ok_response("cross_price")
+    client = _make_client(http)
+    client.journeys.cross_price(
+        cross_price_df, quantity_col="units", own_price_col="price_a",
+        other_price_cols=["price_b"], own_portfolio=["price_b"],
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/cross_price"
+    assert payload["column_map"]["other_price_cols"] == ["price_b"]
+    assert payload["options"]["own_portfolio"] == ["price_b"]
+
+
+def test_cross_price_invalid_own_portfolio_raises(cross_price_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.cross_price(
+            cross_price_df, quantity_col="units", own_price_col="price_a",
+            other_price_cols=["price_b"], own_portfolio=["price_c"],  # not in other_price_cols
+        )
+
+
+def test_intervention_lift_single_design_payload(intervention_df):
+    http = MagicMock()
+    http.post_json.return_value = _ok_response("intervention_lift")
+    client = _make_client(http)
+    client.journeys.intervention_lift(
+        intervention_df, date_col="day", value_col="conversions",
+        intervention_date="2026-01-15",
+    )
+    payload = http.post_json.call_args[0][1]
+    assert http.post_json.call_args[0][0] == "/v1/journeys/intervention_lift"
+    assert payload["column_map"] == {"date_col": "day", "value_col": "conversions"}
+    assert payload["options"]["design"] == "single"
+    assert payload["options"]["intervention_date"] == "2026-01-15"
+
+
+def test_intervention_lift_control_design_requires_treatment_cols(intervention_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.intervention_lift(
+            intervention_df, date_col="day", value_col="conversions",
+            intervention_date="2026-01-15", design="control",
+        )  # missing treatment_col/unit_col/time_col
+
+
+def test_intervention_lift_missing_intervention_date_raises(intervention_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.intervention_lift(
+            intervention_df, date_col="day", value_col="conversions",
+            intervention_date=None,
+        )
+
+
+def test_intervention_lift_invalid_design_raises(intervention_df):
+    client = _make_client(MagicMock())
+    with pytest.raises(SDKUsageError):
+        client.journeys.intervention_lift(
+            intervention_df, date_col="day", value_col="conversions",
+            intervention_date="2026-01-15", design="nonsense",
+        )

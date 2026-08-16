@@ -16,7 +16,7 @@ from databubble.exceptions import (
     RateLimitError, SkillError, ServerError, SDKUsageError,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "DataBubble",
     "SkillResult",

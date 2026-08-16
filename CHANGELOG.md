@@ -36,3 +36,26 @@ recommended/caution/excluded gets bespoke parsing; everything else already
 leans on `.raw`). Added `README.md` examples for all 6. Version bump to
 0.3.0 and PyPI publish are deferred to the (owner-run) publish step, per the
 review's own item 5/6 split.
+
+## 2026-08-16 — 7 more journey wrappers, closing the API/SDK gap
+
+`JourneysClient` goes from 10 to 17 methods, catching up to every
+`/v1/journeys/*` route the API has: `spc_monitoring`, `forecast_inventory`,
+`churn_clv_at_risk`, `mmm`, `pay_equity`, `cross_price`, `intervention_lift`.
+These 7 routes shipped in the main app on 2026-08-12/13 (`api/routes/
+journeys.py`, all graph-only journeys run via `_run_graph_journey_sync`) but
+were never wrapped here — found by diffing the API's route list against
+`JourneysClient`'s method list while investigating an unrelated support
+question, not by a planned audit. `column_map`/`options` keys verified
+directly against each route's docstring and body, not assumed. All 7 return
+their domain payload under `result.raw["result"]["handoffs"]`, matching
+`latent_factors`/`causal_inference`'s existing convention rather than adding
+bespoke `JourneyResult` fields. 21 new tests in `tests/test_sdk_journeys.py`
+(payload-shape + validation-error cases per journey, mocked HTTP, no live
+server). Version bump to 0.4.0.
+
+Also added `scripts/check_local.sh` (build+test+twine-check+the drift check
+that would have caught this gap earlier), `scripts/publish_testpypi.sh`, and
+`scripts/publish_release.sh` — a manual-trigger, staged release flow mirroring
+`code/scripts/deploy_test.sh`/`promote_demo.sh`'s local-dev -> test -> demo
+pattern. See `RELEASING.md` for the updated flow.

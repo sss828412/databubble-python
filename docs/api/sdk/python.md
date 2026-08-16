@@ -40,7 +40,73 @@ result = db.journeys.segmentation(
 result = db.journeys.time_series(
     df, date_col="week", value_col="sales", objective="forecast"
 )
+
+# Classification — binary outcome (churn, fraud, default, response)
+result = db.journeys.classification(
+    df, outcome_col="churned", candidate_cols=["tenure", "usage"],
+)
+
+# A/B test — randomised experiment, two groups
+result = db.journeys.ab_test(df, group_col="variant", metric_col="converted")
+
+# Customer lifetime value / survival analysis
+result = db.journeys.clv(
+    df, duration_col="tenure_months", event_col="churned", margin_per_period=42.0,
+)
+
+# Predictive model — classifier built for prediction accuracy over interpretation
+result = db.journeys.predictive_model(
+    df, target_col="default", feature_cols=["income", "credit_score"],
+)
+
+# Latent factors — PCA (compression) or EFA (latent constructs)
+result = db.journeys.latent_factors(
+    df, indicator_cols=["q1", "q2", "q3", "q4", "q5"], intent="efa",
+)
+
+# Causal inference — design-based effect from observational data
+result = db.journeys.causal_inference(
+    df, treatment_col="treated", outcome_col="revenue",
+    design="did", unit_col="store_id", time_col="week", treat_period=12,
+)
+
+# SPC monitoring — is this process stable, or has it shifted?
+result = db.journeys.spc_monitoring(df, date_col="day", value_col="defect_rate", baseline_n=60)
+
+# Forecast to inventory — reorder point + safety stock from a demand forecast
+result = db.journeys.forecast_inventory(
+    df, date_col="week", value_col="units_sold", lead_time_periods=3,
+)
+
+# Churn -> CLV at risk — expected revenue at risk from churn probability x CLV
+result = db.journeys.churn_clv_at_risk(
+    df, duration_col="tenure_months", event_col="churned", margin_per_period=42.0,
+)
+
+# Marketing mix model — per-channel response curves, ROI, contribution share
+result = db.journeys.mmm(
+    df, date_col="week", outcome_col="revenue", channel_cols=["tv_spend", "search_spend"],
+)
+
+# Pay equity audit — adjusted pay-gap with raw/adjusted/explained breakdown
+result = db.journeys.pay_equity(
+    df, compensation_col="salary", protected_col="gender", factor_cols=["level"],
+)
+
+# Cross-price elasticity & cannibalization
+result = db.journeys.cross_price(
+    df, quantity_col="units", own_price_col="price_a", other_price_cols=["price_b"],
+)
+
+# Intervention lift — did this promo/price change/policy actually move the metric?
+result = db.journeys.intervention_lift(
+    df, date_col="day", value_col="conversions", intervention_date="2026-06-01",
+)
 ```
+
+17 journey methods total as of SDK 0.4.0. Column-by-column argument reference
+lives in each method's docstring (`databubble/journeys.py`) — this page shows
+call shape, not the full parameter list.
 
 ## JourneyResult fields
 

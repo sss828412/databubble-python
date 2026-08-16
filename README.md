@@ -1,6 +1,6 @@
 # DataBubble SDK
 
-Statistical Intelligence as a Service. Current version: **0.3.0**.
+Statistical Intelligence as a Service. Current version: **0.4.0**.
 
 A thin, typed client over the DataBubble HTTP API (`/v1/*`) — handles
 authentication (`X-API-Key`), request/response shaping, and session memory.
@@ -98,6 +98,40 @@ result = db.journeys.causal_inference(
     df, treatment_col="treated", outcome_col="revenue",
     design="did", unit_col="store_id", time_col="week", treat_period=12,
 )
+
+# SPC monitoring — is this process stable, or has it shifted?
+result = db.journeys.spc_monitoring(df, date_col="day", value_col="defect_rate", baseline_n=60)
+
+# Forecast to inventory — reorder point + safety stock from a demand forecast
+result = db.journeys.forecast_inventory(
+    df, date_col="week", value_col="units_sold", lead_time_periods=3,
+)
+
+# Churn -> CLV at risk — expected revenue at risk from churn probability x CLV
+result = db.journeys.churn_clv_at_risk(
+    df, duration_col="tenure_months", event_col="churned", margin_per_period=42.0,
+)
+
+# Marketing mix model — per-channel response curves, ROI, contribution share
+result = db.journeys.mmm(
+    df, date_col="week", outcome_col="revenue",
+    channel_cols=["tv_spend", "search_spend", "social_spend"],
+)
+
+# Pay equity audit — adjusted pay-gap with raw/adjusted/explained breakdown
+result = db.journeys.pay_equity(
+    df, compensation_col="salary", protected_col="gender", factor_cols=["level", "tenure_years"],
+)
+
+# Cross-price elasticity & cannibalization
+result = db.journeys.cross_price(
+    df, quantity_col="units", own_price_col="price_a", other_price_cols=["price_b", "price_c"],
+)
+
+# Intervention lift — did this promo/price change/policy actually move the metric?
+result = db.journeys.intervention_lift(
+    df, date_col="day", value_col="conversions", intervention_date="2026-06-01",
+)
 ```
 
 ## Tiers
@@ -116,10 +150,8 @@ Get a key at [databubble.ai](https://databubble.ai).
 - **databubble** — the main platform (API + skills + journeys + front-end).
 - **databubble-knowledge** — the knowledge / Obsidian vault.
 
-## Before publishing to PyPI (release checklist)
+## Releasing a new version
 
-- ~~Add a `LICENSE` file~~ — done 2026-08-01, MIT (see `LICENSE_DECISION.md`).
-- Add `CONTRIBUTING.md`.
-- Confirm the version, changelog entry, and semantic-versioning policy.
-- Ensure no credentials or internal URLs are baked into the package.
-- Verify the packaged client targets the public, documented `/v1/*` API surface only.
+See `RELEASING.md` for the full flow. Short version:
+`scripts/check_local.sh` (build + test + drift check) -> `scripts/publish_testpypi.sh`
+(dry run) -> `scripts/publish_release.sh` (real PyPI, manually gated).
