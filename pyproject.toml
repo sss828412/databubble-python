@@ -1,14 +1,15 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "databubble"
-version = "0.4.0"
+version = "0.5.0"
 description = "Statistical Intelligence as a Service — rigorous analysis skills via API"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "DataBubble AI"}
 ]
@@ -22,15 +23,23 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
-# Only httpx is optional — urllib fallback works for post_json
-# pandas is required in practice but not enforced (gives clear error if missing)
-dependencies = []
+# Both are hard dependencies as of 0.5.0. They always were in practice: every
+# journey and skill method calls _require_dataframe (pandas), the result surface
+# returns DataFrames, and multipart — db.memory.export — has always needed httpx.
+# Declaring them empty only moved the failure from install time to runtime.
+dependencies = [
+    "httpx>=0.24",
+    "pandas>=1.5",
+]
 
 [project.optional-dependencies]
+# Retained so `pip install databubble[recommended]` keeps working.
 recommended = ["httpx>=0.24", "pandas>=1.5"]
-dev = ["httpx>=0.24", "pandas>=1.5", "pytest>=7", "pytest-mock"]
+notebook = ["ipython>=8"]
+dev = ["httpx>=0.24", "pandas>=1.5", "pytest>=7", "pytest-mock", "ipython>=8"]
 
 [project.urls]
 Homepage = "https://databubble.ai"

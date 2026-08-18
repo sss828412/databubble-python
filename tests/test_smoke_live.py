@@ -144,4 +144,10 @@ def test_journey_driver(db_business, driver_df):
     assert isinstance(result.halted, bool)
     assert isinstance(result.warnings, list)
     if not result.halted:
-        assert isinstance(result.recommended, list)
+        # 0.5.0: the live envelope names this selected_predictors. The old
+        # .recommended assertion passed against a fictional fixture shape and
+        # would have passed here too, on an empty list — which is exactly how
+        # the bug survived. Assert on content, not just type.
+        assert isinstance(result.selected_predictors, list)
+        assert result.selected_predictors, "driver returned no fitted predictors"
+        assert not result.estimates.empty, "driver returned no coefficient table"

@@ -7,6 +7,40 @@ every diff. Add an entry here as part of each PR, in the same PR.
 
 Format: date, branch/PR, one or two lines on what changed and why.
 
+## 2026-08-18 — 0.5.0: data-scientist-first output
+
+Inverts the result surface. `JourneyResult` now leads with the quantitative
+output — `.estimates` (DataFrame of coef / std err / t / p / CI / VIF),
+`.coefficients`, `.effects`, `.diagnostics`, `.confidence_interval`,
+`.significant`, `.n_observations`, `.selected_predictors`, `.handoffs` — and
+`repr()` renders a statsmodels-style table instead of a one-line summary.
+`_repr_html_` renders the same thing as a table in notebooks. The business
+narrative moved to `.explain()`; `plain_english_summary` is unchanged.
+
+Reads everything lazily off `.raw` via properties rather than lifting fields at
+parse time, so an envelope change can no longer silently produce an empty list.
+
+Fixes: `.recommended` / `.caution` / `.excluded` never worked against the live
+API — they read `result["selection_output"]`, which the platform does not
+return (the real names are `selected_predictors` / `excluded_predictors`, and
+the selection block is a sibling of `result`). They now resolve correctly and
+emit DeprecationWarning; removal in 1.0. The unit test that "covered" this used
+a hand-written fixture with a `selection_output` key that no live response has.
+
+Also: `transformations` wrapper added (7th registered skill, previously
+unwrapped); `SkillResult.charts` / `JourneyResult.charts` with lazy fetch from
+`GET /v1/charts/{name}`; `journey_timeout` default 300s (journeys have no
+server-side timeout); automatic retry of 503 honouring `Retry-After`;
+`User-Agent: databubble-python/<version>`; string `detail` and non-JSON error
+bodies no longer collapse to "HTTP 503"; vectorised payload serialisation
+(replaces a per-row `iterrows()` loop); client-side 500k row pre-check;
+`httpx` + `pandas` are now real dependencies; CI workflow runs the tests and
+the drift check; `check_journey_drift.py` superseded by `check_drift.py`, which
+also covers skills and can run in CI against a committed `api_manifest.json`.
+Tier docs corrected: journeys are Pro and above, not Business and above.
+Packaging: `license` moved to an SPDX string with `license-files` (the TOML
+table form is deprecated by setuptools and stops building in Feb 2027).
+
 ## 2026-07-18 — `docs/platform-docs-2026-07-18`
 
 Corrected a code-sample bug in `README.md` (draft had `from databubble import

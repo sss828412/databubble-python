@@ -1,6 +1,6 @@
 # DataBubble SDK
 
-Statistical Intelligence as a Service. Current version: **0.4.0**.
+Statistical Intelligence as a Service. Current version: **0.5.0**.
 
 A thin, typed client over the DataBubble HTTP API (`/v1/*`) — handles
 authentication (`X-API-Key`), request/response shaping, and session memory.
@@ -12,7 +12,8 @@ It does **not** expose the knowledge-base / `/ask` surface (no `knowledge` or
 > `pyproject.toml`.
 
 ```bash
-pip install databubble httpx pandas
+pip install databubble          # httpx + pandas come with it as of 0.5.0
+pip install databubble[notebook]  # adds ipython, for inline chart rendering
 ```
 
 (Installing straight from GitHub also still works, if you want an
@@ -27,10 +28,18 @@ import pandas as pd
 
 db = DataBubble(api_key="dbk_...")
 
+# Regression — the output is a regression table, not a sentence
+r = db.journeys.driver(df, outcome_col="sales", candidate_cols=["price", "promotion"])
+print(r)                 # coef, std err, t, P>|t|, 95% CI, VIF, significance
+r.estimates              # the same thing as a pandas DataFrame
+r.coefficients["price"]  # -8.2
+r.diagnostics            # n, adj R², assumptions_met, transformation applied
+r.explain()              # the plain-English narrative, when you want it
+
 # Univariate analysis
 result = db.skills.univariate(df["price"])
-print(result.summary)
-print(result.warnings)
+result.to_frame()        # metric/value DataFrame
+result.charts.show()     # renders inline in a notebook
 
 # Missing value profiling
 result = db.skills.missing_values(df)
@@ -50,13 +59,22 @@ mem.save("pos_memory.json")
 | `leakage` | DataFrame + outcome= | Post-outcome timing detection, correlation proxy check |
 | `bivariate` | DataFrame + x= + y= | Relationship analysis, linearity check |
 | `correlation` | DataFrame + x= + y= | Pearson + Spearman, non-linearity flag |
+| `transformations` | Series or DataFrame + column= + transform= | Apply and assess log / sqrt / Box-Cox / reflect transforms |
 
 ## Journeys
 
-Single-call, end-to-end analyses — `db.journeys.*` — available on **Business and
-Enterprise tiers only**. Each returns a `JourneyResult` (`primary_estimate`,
-`plain_english_summary`, `warnings`, `assumptions_met`, `is_reliable()`) rather
-than a raw `SkillOutput`. Full reference: `docs/api/sdk/python.md`.
+Single-call, end-to-end analyses — `db.journeys.*` — available on **Pro,
+Business and Enterprise** tiers, plus four of them (`elasticity`, `driver`,
+`segmentation`, `time_series`) on a demo key. Not available on the free
+Developer tier. (Pro was granted full journey access on 2026-08-05; the docs
+said Business-and-above until 0.5.0.)
+
+Each returns a `JourneyResult`. From 0.5.0 its primary surface is quantitative
+— `.estimates` (DataFrame), `.coefficients`, `.effects`, `.diagnostics`,
+`.confidence_interval`, `.significant`, `.selected_predictors` — and `print(r)`
+renders a statsmodels-style regression table. The business narrative is still
+there, at `.explain()`. Full reference: `docs/api/sdk/python.md`; upgrade notes:
+`MIGRATION-0.5.md`.
 
 ```python
 # Price elasticity of demand
@@ -67,10 +85,10 @@ if result.is_reliable():
     print(result.revenue_implication)
 
 # Driver analysis — which variables drive the outcome?
-result = db.journeys.driver(
+r = db.journeys.driver(
     df, outcome_col="sales", candidate_cols=["price", "promotion", "region"],
 )
-print(result.recommended)
+print(r.selected_predictors)   # .recommended is deprecated — see MIGRATION-0.5.md
 
 # Segmentation — discovery (no label_col) or classification (with label_col)
 result = db.journeys.segmentation(df, feature_cols=["recency", "frequency", "spend"])
@@ -138,9 +156,9 @@ result = db.journeys.intervention_lift(
 
 | Tier | Price | Analysis calls/month | Knowledge Q&A calls/month | Skills |
 |---|---|---|---|---|
-| Developer | Free | 100 | 50 | Core analysis skills |
-| Pro | $49/month | 2,000 | 1,000 | All skills |
-| Business | $299/month | 15,000 | Unlimited (fair use) | All skills + journey endpoints |
+| Developer | Free | 100 | 50 | Core analysis skills. No journeys. |
+| Pro | $49/month | 2,000 | 1,000 | All skills + all journeys |
+| Business | $299/month | 15,000 | Unlimited (fair use) | All skills + all journeys |
 | Enterprise | Custom | Unlimited | Unlimited | Everything |
 
 Get a key at [databubble.ai](https://databubble.ai).
@@ -155,3 +173,8 @@ Get a key at [databubble.ai](https://databubble.ai).
 See `RELEASING.md` for the full flow. Short version:
 `scripts/check_local.sh` (build + test + drift check) -> `scripts/publish_testpypi.sh`
 (dry run) -> `scripts/publish_release.sh` (real PyPI, manually gated).
+
+CI (`.github/workflows/ci.yml`) runs the test suite and `scripts/check_drift.py`
+on every push and PR. The drift check compares the SDK's wrappers against
+`api_manifest.json` — regenerate that file from the app repo whenever a journey
+or skill is added, or the check will pass while the SDK falls behind.

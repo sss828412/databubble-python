@@ -23,34 +23,53 @@ from databubble.models import JourneyResult
 from databubble.exceptions import SDKUsageError
 
 
+# The server refuses, never truncates, above this many rows
+# (api/data_source.py:MAX_ANALYSIS_ROWS_DEFAULT). Checked client-side too so a
+# 600k-row frame fails in milliseconds instead of after a multi-hundred-MB upload.
+MAX_ANALYSIS_ROWS = 500_000
+
+
 def _df_to_rows_payload(df, columns: list[str]) -> dict:
     """
     Serialise selected DataFrame columns to row-oriented JSON payload.
     NaN → None (JSON has no NaN concept).
+
+    Vectorised: the old row-by-row iterrows() loop was the dominant cost of a
+    large journey call, before a single byte hit the network.
     """
-    rows = []
+    import pandas as pd
+
     subset = df[columns]
-    for _, row in subset.iterrows():
-        rows.append([
-            None if (v != v) else v   # NaN check without numpy
-            for v in row.tolist()
-        ])
+    # .astype(object) so the None substitution survives numeric dtypes.
+    cleaned = subset.astype(object).where(pd.notna(subset), None)
     return {
-        "columns": columns,
-        "rows": rows,
+        "columns": list(columns),
+        "rows": cleaned.values.tolist(),
     }
 
 
-def _parse_journey_result(response: dict, journey_type: str) -> JourneyResult:
-    """Build a JourneyResult from the API response dict."""
-    result = response.get("result", {})
-    meta = response.get("_meta", {})
+def _check_row_ceiling(df, method: str) -> None:
+    n = len(df)
+    if n > MAX_ANALYSIS_ROWS:
+        raise SDKUsageError(
+            f"db.journeys.{method}(): {n:,} rows exceeds the platform ceiling of "
+            f"{MAX_ANALYSIS_ROWS:,}. The server errors rather than truncating — "
+            "aggregate or sample before calling."
+        )
 
-    # Driver-specific fields
-    selection = result.get("selection_output", {})
-    recommended = selection.get("recommended", []) or result.get("recommended", [])
-    caution = selection.get("caution", []) or result.get("caution", [])
-    excluded = selection.get("excluded", []) or result.get("excluded", [])
+
+def _parse_journey_result(response: dict, journey_type: str, http=None) -> JourneyResult:
+    """
+    Build a JourneyResult from the API response dict.
+
+    Only the small set of scalars that every journey shares is lifted onto the
+    dataclass. Everything quantitative — estimates, CIs, significance, effect
+    sizes, diagnostics — is read lazily off `.raw` by JourneyResult's
+    properties, so the SDK does not have to track envelope changes field by
+    field, and no field can silently parse to an empty list again.
+    """
+    result = response.get("result", {}) or {}
+    meta = response.get("_meta", {}) or {}
 
     return JourneyResult(
         journey_type=journey_type,
@@ -62,12 +81,10 @@ def _parse_journey_result(response: dict, journey_type: str) -> JourneyResult:
         assumptions_met=result.get("assumptions_met"),
         adj_r_squared=result.get("adj_r_squared"),
         revenue_implication=result.get("revenue_implication"),
-        recommended=recommended if isinstance(recommended, list) else [],
-        caution=caution if isinstance(caution, list) else [],
-        excluded=excluded if isinstance(excluded, list) else [],
         tier=meta.get("tier"),
         key_prefix=meta.get("key_prefix"),
         raw=response,
+        _http=http,
     )
 
 
@@ -81,6 +98,7 @@ def _require_dataframe(data, method: str):
             f"db.journeys.{method}() requires a pd.DataFrame. "
             f"Got {type(data).__name__}."
         )
+    _check_row_ceiling(data, method)
 
 
 def _require_col(df, col: str, arg_name: str, method: str) -> str:
@@ -105,12 +123,22 @@ def _require_col_list(df, cols, arg_name: str, method: str) -> list[str]:
 
 
 class JourneysClient:
-    def __init__(self, http_client):
+    def __init__(self, http_client, timeout: Optional[float] = None, include_charts: bool = False):
         self._http = http_client
+        self._timeout = timeout
+        # When the platform ships chart passthrough (Track B), set this to True
+        # and every journey response gains a populated .charts. Harmlessly
+        # ignored by an API that does not yet read the option.
+        self.include_charts = include_charts
 
     def _call(self, endpoint: str, payload: dict, journey_type: str) -> JourneyResult:
-        response = self._http.post_json(f"/v1/journeys/{endpoint}", payload)
-        return _parse_journey_result(response, journey_type)
+        if self.include_charts:
+            options = payload.setdefault("options", {})
+            options.setdefault("include_charts", True)
+        response = self._http.post_json(
+            f"/v1/journeys/{endpoint}", payload, timeout=self._timeout
+        )
+        return _parse_journey_result(response, journey_type, http=self._http)
 
     # -----------------------------------------------------------------------
     # Elasticity

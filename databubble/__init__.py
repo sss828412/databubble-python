@@ -5,24 +5,29 @@ DataBubble SDK — Statistical Intelligence as a Service.
 Quick start:
     from databubble import DataBubble
     db = DataBubble(api_key="dbk_...")
-    result = db.skills.univariate(df["price"])
-    print(result.summary)
+    r = db.journeys.driver(df, outcome_col="sales", candidate_cols=["price"])
+    print(r)              # regression table — coef, std err, t, p, CI
+    r.estimates           # pandas DataFrame
+    r.explain()           # business narrative, on request
 """
 
+from databubble._version import __version__
 from databubble.client import DataBubble
 from databubble.models import SkillResult, MemoryResult, ReconciliationResult, JourneyResult
+from databubble.charts import Chart, ChartSet
 from databubble.exceptions import (
     DataBubbleError, AuthError, ForbiddenError,
     RateLimitError, SkillError, ServerError, SDKUsageError,
 )
 
-__version__ = "0.4.0"
 __all__ = [
     "DataBubble",
     "SkillResult",
     "MemoryResult",
     "ReconciliationResult",
     "JourneyResult",
+    "Chart",
+    "ChartSet",
     "DataBubbleError",
     "AuthError",
     "ForbiddenError",

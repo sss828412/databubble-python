@@ -4,9 +4,10 @@ DataBubble SDK — Quickstart
 Five minutes from key to first result.
 
 Prerequisites:
-    pip install databubble httpx pandas
+    pip install databubble          # httpx + pandas included from 0.5.0
 
-Get a key at databubble.ai (free developer tier: 500 calls/month).
+Get a key at databubble.ai (free Developer tier: 100 analysis calls/month,
+50 knowledge calls — api/keystore.py:TIER_MONTHLY_LIMITS).
 """
 
 import pandas as pd
@@ -38,6 +39,7 @@ df = pd.DataFrame({
 result = db.skills.univariate(df["price"])
 
 print("=== Univariate Analysis: Price ===")
+print(result.to_frame())          # metric/value DataFrame
 print(f"Summary:  {result.summary}")
 print(f"Skewness: {result.findings.get('skewness', 'n/a'):.3f}")
 if result.warnings:
@@ -57,6 +59,14 @@ result_mv = db.skills.missing_values(df)
 
 print("\n=== Missing Value Profile ===")
 print(f"Summary: {result_mv.summary}")
+
+# ---------------------------------------------------------------------------
+# 4b. Regression — the data-scientist surface (Pro tier and above)
+# ---------------------------------------------------------------------------
+# r = db.journeys.driver(df, outcome_col="sales", candidate_cols=["price"])
+# print(r)                      # coef / std err / t / P>|t| / 95% CI table
+# r.estimates.to_csv("driver_estimates.csv")
+# print(r.explain())            # the narrative, when you want it
 
 # ---------------------------------------------------------------------------
 # 5. Export a memory file for next session

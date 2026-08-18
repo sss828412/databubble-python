@@ -72,7 +72,7 @@ def _df_to_payload(df, columns: list[str]) -> dict:
     }
 
 
-def _parse_skill_result(response: dict) -> SkillResult:
+def _parse_skill_result(response: dict, http=None) -> SkillResult:
     """Build a SkillResult from the API response dict."""
     result = response.get("result", response)
     meta = response.get("_meta", {})
@@ -90,6 +90,7 @@ def _parse_skill_result(response: dict) -> SkillResult:
         halted=result.get("halted", False),
         halt_reason=result.get("halt_reason"),
         raw=response,
+        _http=http,
     )
 
 
@@ -99,7 +100,7 @@ class SkillsClient:
 
     def _call(self, skill_name: str, payload: dict) -> SkillResult:
         response = self._http.post_json(f"/v1/skills/{skill_name}", payload)
-        return _parse_skill_result(response)
+        return _parse_skill_result(response, http=self._http)
 
     # -----------------------------------------------------------------------
     # Single-column skills
@@ -139,6 +140,41 @@ class SkillsClient:
         """
         payload = _resolve_single_column(data, column, skill="outliers")
         return self._call("outliers", payload)
+
+    #: Valid `transform` values for db.skills.transformations()
+    #: (skills/analysis/transformations.py:UNIVARIATE_TRANSFORMS).
+    TRANSFORMS = ("log", "sqrt", "box-cox", "reflect-log", "reflect-sqrt")
+
+    def transformations(
+        self,
+        data,
+        transform: str,
+        column: Optional[str] = None,
+    ) -> SkillResult:
+        """
+        Apply and assess a univariate transformation.
+
+        Wraps the 7th registered skill, which had no SDK method before 0.5.0.
+
+        Args:
+            data:      pd.Series, or pd.DataFrame (requires column= arg)
+            transform: one of "log", "sqrt", "box-cox", "reflect-log",
+                       "reflect-sqrt". Validated server-side; the list is
+                       mirrored on SkillsClient.TRANSFORMS.
+            column:    Column name — required when data is a DataFrame.
+
+        Returns:
+            SkillResult with before/after skewness, whether the transform
+            improved the distribution, and chart references in .charts.
+        """
+        if not transform:
+            raise SDKUsageError(
+                "db.skills.transformations() requires transform=. "
+                f"One of: {', '.join(SkillsClient.TRANSFORMS)}"
+            )
+        payload = _resolve_single_column(data, column, skill="transformations")
+        payload["params"] = {**payload.get("params", {}), "transform": transform}
+        return self._call("transformations", payload)
 
     # -----------------------------------------------------------------------
     # Whole-dataset skills
