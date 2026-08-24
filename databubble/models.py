@@ -10,6 +10,27 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from databubble.exceptions import SDKUsageError
+
+_MLFLOW_EXTRA_MSG = (
+    "to_mlflow() requires databubble-scoring with the mlflow extra installed — "
+    "install with `pip install databubble-scoring[mlflow]`."
+)
+
+
+def _save_as_mlflow_model(raw: dict, path: str) -> None:
+    """
+    Shared by ModelCardResult/ScorecardResult/SegmentScorerResult.to_mlflow().
+    Lazily imported so plain `import databubble` never requires
+    databubble-scoring or mlflow to be installed — only calling .to_mlflow()
+    does.
+    """
+    try:
+        from databubble_scoring.mlflow_pyfunc import save_databubble_model
+    except ImportError as e:
+        raise SDKUsageError(_MLFLOW_EXTRA_MSG) from e
+    save_databubble_model(raw, path)
+
 
 @dataclass
 class SkillResult:
@@ -698,6 +719,20 @@ class ModelCardResult:
             json.dump(self.raw, f, indent=2)
         print(f"Model card saved to {path}")
 
+    def to_mlflow(self, path: str) -> None:
+        """
+        Save this card as a local MLflow pyfunc model directory — load it
+        with mlflow.pyfunc.load_model(path).predict(df) and score fully
+        offline, zero DataBubble network call at inference. Requires
+        `pip install databubble-scoring[mlflow]`.
+        """
+        if self.kind == "bundle":
+            raise SDKUsageError(
+                "to_mlflow() does not support bundles (fixed_effect/by_group cards "
+                "with multiple groups) yet — export a single group's card instead."
+            )
+        _save_as_mlflow_model(self.raw, path)
+
     def __repr__(self) -> str:
         if self.kind == "bundle":
             return f"ModelCardResult(bundle, {len(self.raw.get('cards', []))} groups, outcome='{self.outcome}')"
@@ -798,6 +833,15 @@ class ScorecardResult:
             json.dump(self.raw, f, indent=2)
         print(f"Scorecard saved to {path}")
 
+    def to_mlflow(self, path: str) -> None:
+        """
+        Save this scorecard as a local MLflow pyfunc model directory — load
+        it with mlflow.pyfunc.load_model(path).predict(df) and score fully
+        offline, zero DataBubble network call at inference. Requires
+        `pip install databubble-scoring[mlflow]`.
+        """
+        _save_as_mlflow_model(self.raw, path)
+
     @property
     def auc(self) -> Optional[float]:
         return (self.raw.get("provenance") or {}).get("auc")
@@ -840,6 +884,15 @@ class SegmentScorerResult:
         with open(path, "w") as f:
             json.dump(self.raw, f, indent=2)
         print(f"Segment scorer saved to {path}")
+
+    def to_mlflow(self, path: str) -> None:
+        """
+        Save this scorer as a local MLflow pyfunc model directory — load it
+        with mlflow.pyfunc.load_model(path).predict(df) and score fully
+        offline, zero DataBubble network call at inference. Requires
+        `pip install databubble-scoring[mlflow]`.
+        """
+        _save_as_mlflow_model(self.raw, path)
 
     @property
     def segments(self) -> list[str]:

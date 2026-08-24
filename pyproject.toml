@@ -40,6 +40,11 @@ dependencies = [
 recommended = ["httpx>=0.24", "pandas>=1.5"]
 notebook = ["ipython>=8"]
 dev = ["httpx>=0.24", "pandas>=1.5", "pytest>=7", "pytest-mock", "ipython>=8"]
+# .to_mlflow() on ModelCardResult/ScorecardResult/SegmentScorerResult (offline
+# scoring artifacts) — not published to PyPI yet, install locally in editable
+# mode from a sibling checkout before this extra can resolve:
+#   pip install -e ../databubble-scoring[mlflow]
+mlflow = ["databubble-scoring[mlflow]"]
 
 [project.urls]
 Homepage = "https://databubble.ai"
