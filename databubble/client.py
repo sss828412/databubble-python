@@ -23,6 +23,9 @@ from databubble.exceptions import (
 from databubble.skills import SkillsClient
 from databubble.memory import MemoryClient
 from databubble.journeys import JourneysClient
+from databubble.model import ModelClient
+from databubble.scorecard import ScorecardClient
+from databubble.segments import SegmentsClient
 
 
 DEFAULT_BASE_URL = "https://api.databubble.ai"
@@ -94,16 +97,24 @@ class _HTTPClient:
     def _raise_for_status(self, status_code: int, body: dict):
         # Route-level errors wrap in {"detail": {"error": ...}}; FastAPI's own
         # HTTPException uses {"detail": "<string>"}; middleware errors use a flat
-        # {"error": ...}. Extract from all three — the string form carries the
-        # most useful text (row ceilings, "Server at capacity") and used to be
-        # thrown away in favour of a bare "HTTP 503".
+        # {"error": ...}; the model/scorecard/segment-scorer score-and-predict
+        # endpoints return their structured validation failures as a flat
+        # {"error": "input_validation", "message": "<the real text>", ...}
+        # with no "detail" wrapper at all (they bypass FastAPI's HTTPException
+        # to carry missing_columns/unseen_levels alongside it) — "message" is
+        # the human text there, "error" is just a category tag, so it has to
+        # be checked first or every one of those errors surfaces as the
+        # useless literal string "input_validation". Extract from all of
+        # these — the string form carries the most useful text (row ceilings,
+        # "Server at capacity") and used to be thrown away in favour of a
+        # bare "HTTP 503".
         detail = body.get("detail")
         msg = None
         if isinstance(detail, dict):
             msg = detail.get("error") or detail.get("message")
         elif isinstance(detail, str) and detail.strip():
             msg = detail
-        msg = msg or body.get("error") or f"HTTP {status_code}"
+        msg = msg or body.get("message") or body.get("error") or f"HTTP {status_code}"
 
         if status_code == 401:
             raise AuthError(msg, status_code, body)
@@ -299,6 +310,9 @@ class DataBubble:
         self.skills = SkillsClient(self._http)
         self.memory = MemoryClient(self._http)
         self.journeys = JourneysClient(self._http, timeout=journey_timeout)
+        self.model = ModelClient(self._http)
+        self.scorecard = ScorecardClient(self._http)
+        self.segments = SegmentsClient(self._http)
 
     def close(self):
         self._http.close()

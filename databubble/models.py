@@ -649,3 +649,222 @@ class JourneyResult:
             if isinstance(source, dict) and isinstance(source.get("excluded"), list):
                 return source["excluded"]
         return self.excluded_predictors
+
+
+# ---------------------------------------------------------------------------
+# Portable model artifacts — db.model / db.scorecard / db.segments (0.6.0)
+#
+# Cards/scorecards/scorers never pickle a fitted object — coefficients (or a
+# FittedPipeline of primitives) plus a replayable recipe, so scoring never
+# needs the platform again once you have the artifact. Export once from a
+# fitted JourneyResult, then predict/score independently, any time, offline.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ModelCardResult:
+    """
+    Return type for db.model.export() — a portable JSON model card (linear or
+    fixed-effect regression) or bundle (one card per group, fixed_effect/
+    by_group journeys).
+
+        card = db.model.export(result)
+        card.coefficients        # Series (card) or DataFrame (bundle)
+        card.save("model.json")  # reload with json.load(), pass to .predict()
+    """
+    outcome: str
+    kind: str  # "card" | "bundle"
+    model_family: Optional[str] = None
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def coefficients(self):
+        """Series (single card, term -> coefficient) or DataFrame (bundle, one row per group x term)."""
+        import pandas as pd
+
+        if self.kind == "bundle":
+            rows = [
+                {"group": card.get("group_value"), "term": t["name"], "coefficient": t["coefficient"]}
+                for card in self.raw.get("cards", [])
+                for t in card.get("terms", [])
+            ]
+            return pd.DataFrame(rows)
+        terms = self.raw.get("terms", [])
+        return pd.Series({t["name"]: t["coefficient"] for t in terms}, name="coefficient")
+
+    def save(self, path: str) -> None:
+        """Write the portable card JSON to disk."""
+        import json
+        with open(path, "w") as f:
+            json.dump(self.raw, f, indent=2)
+        print(f"Model card saved to {path}")
+
+    def __repr__(self) -> str:
+        if self.kind == "bundle":
+            return f"ModelCardResult(bundle, {len(self.raw.get('cards', []))} groups, outcome='{self.outcome}')"
+        return f"ModelCardResult('{self.outcome}', {len(self.raw.get('terms', []))} terms)"
+
+
+@dataclass
+class PredictionResult:
+    """Return type for db.model.predict()."""
+    outcome: str
+    n_scored: int
+    log_back_transformed: bool
+    warnings: list[str] = field(default_factory=list)
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def predictions(self):
+        """DataFrame: prediction, plus ci_lower/ci_upper/pi_lower/pi_upper/group_used when the card provides them."""
+        import pandas as pd
+
+        cols: dict[str, Any] = {"prediction": self.raw.get("predictions")}
+        for key in ("group_used", "ci_lower", "ci_upper", "pi_lower", "pi_upper"):
+            value = self.raw.get(key)
+            if value is not None:
+                cols[key] = value
+        return pd.DataFrame(cols)
+
+    def __repr__(self) -> str:
+        return f"PredictionResult(n_scored={self.n_scored}, outcome='{self.outcome}')"
+
+
+@dataclass
+class ComparisonResult:
+    """
+    Return type for db.model.compare(). Shape depends on mode:
+    "ic" (>=2 cards) -> ranked candidates by AIC/BIC; "nested" (exactly 2
+    cards: [reduced, full]) -> a single F-test verdict, read from .raw.
+    """
+    mode: str
+    outcome: str
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def candidates(self):
+        """Ranked-candidate DataFrame — empty for mode='nested' (use .raw for the F-test fields)."""
+        from databubble.tables import rows_to_frame
+
+        return rows_to_frame(self.raw.get("candidates"))
+
+    @property
+    def best_label(self) -> Optional[str]:
+        return self.raw.get("best_label")
+
+    def __repr__(self) -> str:
+        if self.mode == "nested":
+            verdict = "full model preferred" if self.raw.get("full_model_preferred") else "reduced model preferred"
+            p = self.raw.get("p_value")
+            return f"ComparisonResult(nested, {verdict}, p={p:.4g})" if p is not None else f"ComparisonResult(nested, {verdict})"
+        return f"ComparisonResult(ic, best='{self.best_label}', {len(self.raw.get('candidates', []))} candidates)"
+
+
+@dataclass
+class DriftResult:
+    """Return type for db.model.drift() — feature drift vs. the card's training-time snapshot."""
+    applicable: bool
+    drift_detected: bool
+    n_features_checked: int
+    n_features_drifted: int
+    interpretation: str
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def per_feature(self):
+        """DataFrame: column, kind, drifted, detail, plus reference/observed stats."""
+        from databubble.tables import rows_to_frame
+
+        return rows_to_frame(self.raw.get("per_feature"))
+
+    def __repr__(self) -> str:
+        if not self.applicable:
+            return f"DriftResult(not applicable: {self.raw.get('reason')})"
+        return f"DriftResult(drift_detected={self.drift_detected}, {self.n_features_drifted}/{self.n_features_checked} features)"
+
+
+@dataclass
+class ScorecardResult:
+    """
+    Return type for db.scorecard.export() — a portable JSON scorecard for a
+    classification-family journey (classification, predictive_model).
+    """
+    outcome: str
+    raw: dict = field(default_factory=dict)
+
+    def save(self, path: str) -> None:
+        """Write the portable scorecard JSON to disk."""
+        import json
+        with open(path, "w") as f:
+            json.dump(self.raw, f, indent=2)
+        print(f"Scorecard saved to {path}")
+
+    @property
+    def auc(self) -> Optional[float]:
+        return (self.raw.get("provenance") or {}).get("auc")
+
+    def __repr__(self) -> str:
+        return f"ScorecardResult('{self.outcome}', auc={self.auc})"
+
+
+@dataclass
+class ScoreResult:
+    """Return type for db.scorecard.score()."""
+    n_scored: int
+    low_confidence_count: int
+    threshold_used: Optional[float] = None
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def predictions(self):
+        """DataFrame: label, probability (top class), low_confidence — one row per scored observation."""
+        import pandas as pd
+
+        labels = self.raw.get("labels") or []
+        probs = self.raw.get("probabilities") or []
+        low_conf = self.raw.get("low_confidence") or [None] * len(labels)
+        top_prob = [max(p.values()) if isinstance(p, dict) and p else None for p in probs]
+        return pd.DataFrame({"label": labels, "probability": top_prob, "low_confidence": low_conf})
+
+    def __repr__(self) -> str:
+        return f"ScoreResult(n_scored={self.n_scored}, low_confidence={self.low_confidence_count})"
+
+
+@dataclass
+class SegmentScorerResult:
+    """Return type for db.segments.export() — a portable JSON segment scorer."""
+    raw: dict = field(default_factory=dict)
+
+    def save(self, path: str) -> None:
+        """Write the portable scorer JSON to disk."""
+        import json
+        with open(path, "w") as f:
+            json.dump(self.raw, f, indent=2)
+        print(f"Segment scorer saved to {path}")
+
+    @property
+    def segments(self) -> list[str]:
+        return sorted(set((self.raw.get("cluster_label_map") or {}).values()))
+
+    def __repr__(self) -> str:
+        return f"SegmentScorerResult({len(self.segments)} segments)"
+
+
+@dataclass
+class SegmentScoreResult:
+    """Return type for db.segments.score()."""
+    n_scored: int
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def assignments(self):
+        """DataFrame: segment, raw_label — one row per scored observation."""
+        from databubble.tables import rows_to_frame
+
+        return rows_to_frame(self.raw.get("assignments"))
+
+    @property
+    def segment_distribution(self) -> dict:
+        return self.raw.get("segment_distribution") or {}
+
+    def __repr__(self) -> str:
+        return f"SegmentScoreResult(n_scored={self.n_scored}, distribution={self.segment_distribution})"

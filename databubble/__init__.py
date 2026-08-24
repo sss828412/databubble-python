@@ -13,7 +13,11 @@ Quick start:
 
 from databubble._version import __version__
 from databubble.client import DataBubble
-from databubble.models import SkillResult, MemoryResult, ReconciliationResult, JourneyResult
+from databubble.models import (
+    SkillResult, MemoryResult, ReconciliationResult, JourneyResult,
+    ModelCardResult, PredictionResult, ComparisonResult, DriftResult,
+    ScorecardResult, ScoreResult, SegmentScorerResult, SegmentScoreResult,
+)
 from databubble.charts import Chart, ChartSet
 from databubble.exceptions import (
     DataBubbleError, AuthError, ForbiddenError,
@@ -26,6 +30,14 @@ __all__ = [
     "MemoryResult",
     "ReconciliationResult",
     "JourneyResult",
+    "ModelCardResult",
+    "PredictionResult",
+    "ComparisonResult",
+    "DriftResult",
+    "ScorecardResult",
+    "ScoreResult",
+    "SegmentScorerResult",
+    "SegmentScoreResult",
     "Chart",
     "ChartSet",
     "DataBubbleError",
