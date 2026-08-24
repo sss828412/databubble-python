@@ -355,33 +355,75 @@ class JourneyResult:
         import pandas as pd
         from databubble.tables import mapping_to_frame, rows_to_frame
 
-        frames = []
+        # Each (frame, source_label) pair — the label only ever gets used to
+        # disambiguate a column name that turns out to collide across sources
+        # (see below); it never appears in the output otherwise.
+        frames: list[tuple[Any, str]] = []
         for key, label in (
-            ("standardized_coefficients", "std_coefficient"),
+            ("standardized_coefficients", "std"),
             ("effect_sizes", "effect_size"),
             ("partial_r_squared", "partial_r2"),
         ):
             value = self.result.get(key)
             if isinstance(value, dict):
-                frames.append(mapping_to_frame(value, "predictor", label))
+                frames.append((mapping_to_frame(value, "predictor", label), label))
             elif isinstance(value, list):
                 frame = rows_to_frame(value)
                 if not frame.empty:
                     name_col = "predictor" if "predictor" in frame.columns else "name"
                     if name_col in frame.columns:
                         frame = frame.rename(columns={name_col: "predictor"})
-                    frames.append(frame)
+                    frames.append((frame, label))
 
+        # partial_r_squared_dominance is NOT a flat {predictor: value} mapping —
+        # it's {"shares": [{"name", "dominance_r2", "share_of_model_r2", "rank"}, ...],
+        # "sum": float, "reconciles_to_r2": bool}. Feeding the dict straight into
+        # mapping_to_frame treated "shares"/"sum"/"reconciles_to_r2" themselves as
+        # predictor names, producing three garbage rows alongside the real ones —
+        # caught by testing against a live-captured driver_analysis response, not
+        # by the fixtures (which never exercised dominance's actual shape). The
+        # model-level "sum"/"reconciles_to_r2" scalars aren't per-predictor, so
+        # they're intentionally left out of this table — still reachable via
+        # .raw["partial_r_squared_dominance"].
         dominance = self.result.get("partial_r_squared_dominance")
-        if isinstance(dominance, dict) and dominance:
-            frames.append(mapping_to_frame(dominance, "predictor", "dominance"))
+        if isinstance(dominance, dict) and isinstance(dominance.get("shares"), list):
+            dom_frame = rows_to_frame(dominance["shares"])
+            if not dom_frame.empty:
+                name_col = "predictor" if "predictor" in dom_frame.columns else "name"
+                if name_col in dom_frame.columns:
+                    dom_frame = dom_frame.rename(columns={name_col: "predictor"})
+                frames.append((dom_frame, "dominance"))
 
-        frames = [f for f in frames if not f.empty and "predictor" in f.columns]
+        frames = [(f, label) for f, label in frames if not f.empty and "predictor" in f.columns]
         if not frames:
             return pd.DataFrame()
 
-        merged = frames[0]
-        for frame in frames[1:]:
+        # pandas' merge(..., suffixes=) only ever disambiguates ONE pairwise
+        # collision — a third frame sharing a column name already suffixed
+        # into e.g. "rank_x"/"rank_y" by an earlier merge raises MergeError
+        # instead of silently overwriting it. standardized_coefficients,
+        # partial_r_squared and the dominance shares all carry their own
+        # "rank" column, so with 3+ sources this isn't a hypothetical — it's
+        # every driver_analysis/elasticity result with dominance data
+        # (caught the same way as the garbage-rows bug above: testing against
+        # a live-captured response, not the fixtures). Disambiguate up front
+        # instead: any non-key column name that appears in more than one
+        # frame gets its source label appended, so merges never collide
+        # regardless of how many sources are present.
+        from collections import Counter
+        col_counts = Counter()
+        for frame, _ in frames:
+            col_counts.update(c for c in frame.columns if c != "predictor")
+        renamed = []
+        for frame, label in frames:
+            rename_map = {
+                c: f"{c}_{label}" for c in frame.columns
+                if c != "predictor" and col_counts[c] > 1
+            }
+            renamed.append(frame.rename(columns=rename_map) if rename_map else frame)
+
+        merged = renamed[0]
+        for frame in renamed[1:]:
             merged = merged.merge(frame, on="predictor", how="outer")
         return merged
 

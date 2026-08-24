@@ -64,9 +64,31 @@ REAL_DRIVER_RESPONSE = {
              "t_statistic": 1.512, "p_value": 0.139, "ci_lower": -1.05,
              "ci_upper": 7.25, "vif": 1.1, "is_significant": False},
         ],
-        "standardized_coefficients": {"price": -0.71, "promotion": 0.18},
-        "partial_r_squared": {"price": 0.44, "promotion": 0.03},
-        "partial_r_squared_dominance": {"price": 0.93, "promotion": 0.07},
+        # Live-captured shape (databubble-ds-output Phase 0 refresh, 24 Aug 2026) —
+        # all three arrive as a list of per-predictor dicts, never a flat
+        # {predictor: number} mapping. partial_r_squared_dominance in particular
+        # nests the per-predictor breakdown under "shares"; "sum" and
+        # "reconciles_to_r2" are model-level, not per-predictor.
+        "standardized_coefficients": [
+            {"name": "price", "raw_coefficient": -8.2, "beta_std": -0.71,
+             "abs_beta_std": 0.71, "p_value": 0.0001, "is_significant": True, "rank": 1},
+            {"name": "promotion", "raw_coefficient": 3.1, "beta_std": 0.18,
+             "abs_beta_std": 0.18, "p_value": 0.139, "is_significant": False, "rank": 2},
+        ],
+        "partial_r_squared": [
+            {"name": "price", "t_statistic": -6.777, "semipartial_r2": 0.31,
+             "partial_r2": 0.44, "rank": 1},
+            {"name": "promotion", "t_statistic": 1.512, "semipartial_r2": 0.02,
+             "partial_r2": 0.03, "rank": 2},
+        ],
+        "partial_r_squared_dominance": {
+            "shares": [
+                {"name": "price", "dominance_r2": 0.93, "share_of_model_r2": 0.87, "rank": 1},
+                {"name": "promotion", "dominance_r2": 0.07, "share_of_model_r2": 0.13, "rank": 2},
+            ],
+            "sum": 1.0,
+            "reconciles_to_r2": True,
+        },
     },
     "_meta": {"journey": "driver", "tier": "pro", "key_prefix": "dbk_test12"},
 }
@@ -127,11 +149,65 @@ def test_coefficients_series():
 def test_effects_merges_standardised_partial_and_dominance():
     r = _result(REAL_DRIVER_RESPONSE)
     effects = r.effects
-    assert set(effects.columns) == {"predictor", "std_coefficient", "partial_r2", "dominance"}
+    assert len(effects) == 2  # one row per predictor, not one per dominance dict key
+    assert set(effects.columns) == {
+        "predictor", "raw_coefficient", "beta_std", "abs_beta_std", "p_value",
+        "is_significant", "rank_std", "t_statistic", "semipartial_r2", "partial_r2",
+        "rank_partial_r2", "dominance_r2", "share_of_model_r2", "rank_dominance",
+    }
     row = effects[effects["predictor"] == "price"].iloc[0]
-    assert row["std_coefficient"] == -0.71
+    assert row["beta_std"] == -0.71
     assert row["partial_r2"] == 0.44
-    assert row["dominance"] == 0.93
+    assert row["dominance_r2"] == 0.93
+    # the dominance dict's model-level scalars ("sum", "reconciles_to_r2") must
+    # never surface as fake predictor rows — this is the bug this test exists to catch
+    assert "shares" not in effects["predictor"].values
+    assert "sum" not in effects["predictor"].values
+    assert "reconciles_to_r2" not in effects["predictor"].values
+
+
+def test_effects_handles_four_colliding_sources_without_a_merge_error():
+    """
+    A real driver_analysis/elasticity response carries FOUR effects sources
+    at once — standardized_coefficients, effect_sizes, partial_r_squared, and
+    partial_r_squared_dominance — and three of them independently carry their
+    own "rank" column. pandas' merge(suffixes=) only ever disambiguates one
+    pairwise collision: merging a 3rd/4th frame that shares an already-
+    suffixed name (e.g. "rank_x") raises MergeError instead of silently
+    dropping data. The two-source REAL_DRIVER_RESPONSE fixture above can't
+    catch this — it never hit the 3rd merge. Shapes below are trimmed from a
+    live-captured driver_analysis response (Phase 0 refresh, 24 Aug 2026).
+    """
+    payload = {
+        "status": "ok",
+        "journey_type": "driver",
+        "result": {
+            "estimates": [{"name": "price", "coefficient": -7.73}],
+            "standardized_coefficients": [
+                {"name": "price", "beta_std": -0.83, "p_value": 0.0, "rank": 1},
+            ],
+            "effect_sizes": [
+                {"name": "price", "t_statistic": -20.89, "band": "large",
+                 "p_value": 0.0, "rank": 1},
+            ],
+            "partial_r_squared": [
+                {"name": "price", "t_statistic": -20.89, "partial_r2": 0.85, "rank": 1},
+            ],
+            "partial_r_squared_dominance": {
+                "shares": [{"name": "price", "dominance_r2": 0.70, "rank": 1}],
+                "sum": 0.879, "reconciles_to_r2": True,
+            },
+        },
+        "_meta": {},
+    }
+    effects = _result(payload).effects  # must not raise MergeError
+    assert len(effects) == 1
+    assert effects.iloc[0]["predictor"] == "price"
+    assert effects.iloc[0]["dominance_r2"] == 0.70
+    # "rank" came from all 4 sources — every occurrence must be disambiguated,
+    # none silently dropped or left to collide
+    rank_cols = [c for c in effects.columns if c.startswith("rank")]
+    assert len(rank_cols) == 4
 
 
 def test_diagnostics_only_includes_returned_fields():
