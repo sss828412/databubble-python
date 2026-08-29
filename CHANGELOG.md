@@ -7,6 +7,14 @@ every diff. Add an entry here as part of each PR, in the same PR.
 
 Format: date, branch/PR, one or two lines on what changed and why.
 
+## 2026-08-29 — 0.6.1: pin the mlflow extra to a real dependency
+
+`[mlflow]`'s dependency on `databubble-scoring[mlflow]` was unpinned (no version constraint at
+all) in 0.6.0's published metadata, which had shipped before `databubble-scoring` had any real
+PyPI release to point at. Now pinned to `>=0.1.0`, `databubble-scoring`'s actual first real PyPI
+release (2026-08-29). `pip install databubble[mlflow]` now resolves and imports end-to-end from
+PyPI alone for the first time — no editable sibling checkout required.
+
 ## 2026-08-24 — 0.6.0: portable model artifacts + offline scoring
 
 Phase 3+5 of the SDK train→predict arc. Adds `db.model` / `db.scorecard` /
