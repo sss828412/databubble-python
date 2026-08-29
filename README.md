@@ -1,6 +1,6 @@
 # DataBubble SDK
 
-Statistical Intelligence as a Service. Current version: **0.5.0**.
+Statistical Intelligence as a Service. Current version: **0.6.0**.
 
 A thin, typed client over the DataBubble HTTP API (`/v1/*`) — handles
 authentication (`X-API-Key`), request/response shaping, and session memory.
@@ -12,7 +12,7 @@ It does **not** expose the knowledge-base / `/ask` surface (no `knowledge` or
 > `pyproject.toml`.
 
 ```bash
-pip install databubble          # httpx + pandas come with it as of 0.5.0
+pip install databubble          # httpx + pandas come with it as of 0.5.0+
 pip install databubble[notebook]  # adds ipython, for inline chart rendering
 ```
 

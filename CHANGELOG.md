@@ -7,6 +7,41 @@ every diff. Add an entry here as part of each PR, in the same PR.
 
 Format: date, branch/PR, one or two lines on what changed and why.
 
+## 2026-08-24 — 0.6.0: portable model artifacts + offline scoring
+
+Phase 3+5 of the SDK train→predict arc. Adds `db.model` / `db.scorecard` /
+`db.segments` — typed clients over the platform's existing model-card/
+scorecard/segment-scorer export+score endpoints. `db.model.export(result)`
+turns a fitted `JourneyResult` into a portable artifact (coefficients, or a
+`FittedPipeline` of primitives, plus a replayable recipe — never a pickled
+object), which `.save()`/reload and `db.model.predict(card, new_df)` can
+score independent of the session. Also fixes `client.py`'s error-message
+extraction: the model/scorecard/segment-scorer score-and-predict endpoints'
+structured 422s carry the real message under `"message"`, not `"detail"` —
+was silently discarded in favour of the literal string "input_validation".
+
+Each of the three artifact types also gets `.to_mlflow()`: writes a real
+MLflow pyfunc model directory, scored fully offline
+(`mlflow.pyfunc.load_model(path).predict(df)`) with zero DataBubble network
+call at inference. Lazily imports `databubble_scoring.mlflow_pyfunc` so
+plain `import databubble` never requires it; new `mlflow` optional-dependency
+group (currently resolves only via an editable sibling checkout of
+`databubble-scoring` — not yet on PyPI).
+
+Also folds in an unreleased fix from the same period: `.effects` misread
+`partial_r_squared_dominance` (a `{"shares": [...], "sum",
+"reconciles_to_r2"}` dict, not a flat `{predictor: value}` mapping) as
+predictor rows, and merging 3+ effect-size sources that each carry their own
+`rank` column raised a pandas `MergeError` on every real
+`driver_analysis`/`elasticity` response, not just an edge case.
+
+35 new tests across `test_sdk_model_surface.py`, `test_sdk_mlflow.py`, and
+`test_ds_surface.py`. Version bump was written into the model-artifact
+commit's own message (0818184/39dbb72/e7573b4 all landed on `ds-first-output`
+without ever touching `pyproject.toml`) — applied here as part of merging the
+branch, bumping straight from the last PyPI release (0.4.0) since 0.5.0 was
+also never actually published.
+
 ## 2026-08-18 — 0.5.0: data-scientist-first output
 
 Inverts the result surface. `JourneyResult` now leads with the quantitative
